@@ -9,6 +9,45 @@ from datetime import datetime
 import os
 from selenium.webdriver.common.by import By
 import math
+import pyperclip
+import time
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
+
+def paste_text_with_emojis(driver, element, text):
+    """Лучший метод для вставки текста с эмодзи"""
+    try:
+        # Копируем текст в буфер обмена
+        pyperclip.copy(text)
+
+        # Небольшая задержка для надежности
+        time.sleep(0.1)
+
+        # Фокусируемся на элемент
+        element.click()
+        time.sleep(0.1)
+
+        # Выделяем весь текст и заменяем
+        actions = ActionChains(driver)
+        actions.key_down(Keys.CONTROL).send_keys('a').key_up(Keys.CONTROL)
+        actions.perform()
+
+        # Вставляем из буфера
+        actions = ActionChains(driver)
+        actions.key_down(Keys.CONTROL).send_keys('v').key_up(Keys.CONTROL)
+        actions.perform()
+
+        # Дополнительные события для активации обработчиков
+        driver.execute_script("""
+            arguments[0].dispatchEvent(new Event('input', { bubbles: true }));
+            arguments[0].dispatchEvent(new Event('change', { bubbles: true }));
+        """, element)
+
+        return True
+
+    except Exception as e:
+        print(f"Clipboard method failed: {e}")
+        return False
 
 from createpost import launch_browser_with_adspower, tag_model
 
@@ -949,11 +988,7 @@ class ModelManagerApp:
             input_field = wait.until(EC.presence_of_element_located((
                 By.CSS_SELECTOR, 'div[contenteditable="true"][role="textbox"]'
             )))
-            driver.execute_script("arguments[0].innerHTML = arguments[1];", input_field, post_text)
-            driver.execute_script(
-                "arguments[0].dispatchEvent(new Event('input', { bubbles: true }));",
-                input_field
-            )
+            paste_text_with_emojis(driver, input_field, post_text)
             time.sleep(1)
 
             # 2. Загрузка изображения
