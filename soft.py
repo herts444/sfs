@@ -13,6 +13,8 @@ import pyperclip
 import time
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.action_chains import ActionChains
+from pywinauto.application import Application
+
 
 def paste_text_with_emojis(driver, element, text):
     """Лучший метод для вставки текста с эмодзи"""
@@ -51,8 +53,34 @@ def paste_text_with_emojis(driver, element, text):
 
 from createpost import launch_browser_with_adspower, tag_model
 
+import pyautogui
+import time
 
-def upload_image(driver, image_path, wait):
+
+def close_windows_file_dialog():
+    """
+    Закрывает системное окно выбора файла (поддержка: украинский, русский, английский).
+    """
+    try:
+        app = Application().connect(title_re=r".*(Відкриття|Открытие|Open).*", timeout=5)
+        dlg = app.top_window()
+        dlg.set_focus()
+
+        for button_name in ['Відкрити', 'Открыть', 'Open']:
+            try:
+                dlg[button_name].click()
+                print(f"[✓] Закрыли окно кнопкой: {button_name}")
+                return
+            except Exception:
+                continue
+
+        dlg.type_keys("{ENTER}")
+        print("[✓] Закрыли окно клавишей ENTER")
+    except Exception as e:
+        print(f"[!] Не удалось закрыть системное окно: {e}")
+
+
+def upload_image(driver, image_path):
     """
     Функция загрузки изображения с локального файла через кнопку #attach_file_photo
     """
@@ -118,6 +146,68 @@ def upload_image(driver, image_path, wait):
                     # Ждем завершения загрузки
                     time.sleep(5)
 
+                    # Закрываем диалог после загрузки файла
+                    try:
+                        import pyautogui
+                        print("Попытка закрыть диалог через pyautogui")
+
+                        # Метод 1: Alt+F4 (закрыть активное окно)
+                        pyautogui.hotkey('alt', 'f4')
+                        time.sleep(1)
+                        print("Отправлен Alt+F4")
+
+                        # Метод 2: Если не сработал - ESC
+                        pyautogui.press('escape')
+                        time.sleep(1)
+                        print("Отправлен ESC")
+
+                        # Метод 3: Если все еще открыт - Enter (подтвердить выбор)
+                        pyautogui.press('enter')
+                        time.sleep(1)
+                        print("Отправлен Enter")
+
+                    except ImportError:
+                        print("pyautogui не установлен, используем альтернативные методы")
+
+                        # Альтернативный метод через Windows API
+                        try:
+                            import win32gui
+                            import win32con
+
+                            # Находим окно диалога
+                            def enum_windows_callback(hwnd, windows):
+                                if win32gui.IsWindowVisible(hwnd):
+                                    window_title = win32gui.GetWindowText(hwnd)
+                                    if any(keyword in window_title.lower() for keyword in
+                                           ['open', 'выбор', 'файл', 'dialog']):
+                                        windows.append(hwnd)
+                                return True
+
+                            windows = []
+                            win32gui.EnumWindows(enum_windows_callback, windows)
+
+                            if windows:
+                                # Закрываем первое найденное окно диалога
+                                win32gui.PostMessage(windows[0], win32con.WM_CLOSE, 0, 0)
+                                print("Диалог закрыт через Windows API")
+
+                        except ImportError:
+                            print("win32gui не установлен, пробуем через selenium")
+
+                            # Последняя попытка через selenium
+                            try:
+                                from selenium.webdriver.common.keys import Keys
+                                driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+                                time.sleep(1)
+                                # Еще раз для уверенности
+                                driver.find_element(By.TAG_NAME, "body").send_keys(Keys.ESCAPE)
+                                print("Диалог закрыт через Selenium ESC")
+                            except Exception as selenium_err:
+                                print(f"Selenium ESC не сработал: {selenium_err}")
+
+                    except Exception as close_err:
+                        print(f"Ошибка при закрытии диалога: {close_err}")
+
                     return True
                 else:
                     print("Инпуты для файлов не найдены после нажатия кнопки")
@@ -149,6 +239,52 @@ def upload_image(driver, image_path, wait):
                         # Ждем завершения загрузки
                         time.sleep(5)
 
+                        # Закрываем диалог после загрузки файла
+                        try:
+                            import pyautogui
+                            print("Попытка закрыть диалог через pyautogui")
+
+                            # Метод 1: Alt+F4 (закрыть активное окно)
+                            pyautogui.hotkey('alt', 'f4')
+                            time.sleep(1)
+                            print("Отправлен Alt+F4")
+
+                            # Метод 2: Если не сработал - ESC
+                            pyautogui.press('escape')
+                            time.sleep(1)
+                            print("Отправлен ESC")
+
+                        except ImportError:
+                            print("pyautogui не установлен")
+
+                            # Альтернативный метод через Windows API
+                            try:
+                                import win32gui
+                                import win32con
+
+                                # Находим окно диалога
+                                def enum_windows_callback(hwnd, windows):
+                                    if win32gui.IsWindowVisible(hwnd):
+                                        window_title = win32gui.GetWindowText(hwnd)
+                                        if any(keyword in window_title.lower() for keyword in
+                                               ['open', 'выбор', 'файл', 'dialog']):
+                                            windows.append(hwnd)
+                                    return True
+
+                                windows = []
+                                win32gui.EnumWindows(enum_windows_callback, windows)
+
+                                if windows:
+                                    # Закрываем первое найденное окно диалога
+                                    win32gui.PostMessage(windows[0], win32con.WM_CLOSE, 0, 0)
+                                    print("Диалог закрыт через Windows API")
+
+                            except ImportError:
+                                print("win32gui не установлен")
+
+                        except Exception as close_err:
+                            print(f"Ошибка при закрытии диалога: {close_err}")
+
                         return True
             else:
                 print("Кнопка #attach_file_photo не найдена")
@@ -175,6 +311,27 @@ def upload_image(driver, image_path, wait):
 
                         # Ждем завершения загрузки
                         time.sleep(5)
+
+                        # Закрываем диалог после загрузки файла
+                        try:
+                            import pyautogui
+                            print("Попытка закрыть диалог через pyautogui")
+
+                            # Метод 1: Alt+F4 (закрыть активное окно)
+                            pyautogui.hotkey('alt', 'f4')
+                            time.sleep(1)
+                            print("Отправлен Alt+F4")
+
+                            # Метод 2: Если не сработал - ESC
+                            pyautogui.press('escape')
+                            time.sleep(1)
+                            print("Отправлен ESC")
+
+                        except ImportError:
+                            print("pyautogui не установлен")
+
+                        except Exception as close_err:
+                            print(f"Ошибка при закрытии диалога: {close_err}")
 
                         return True
                     else:
@@ -914,8 +1071,8 @@ class ModelManagerApp:
                         thread = threading.Thread(target=self.create_post_wrapper,
                                                   args=(ads_id, model_tag, text_data, self.image_path, onlyfans_tag),
                                                   daemon=True)
+                        self.execution_threads.append(thread)  # Добавляем ПЕРЕД запуском
                         thread.start()
-                        self.execution_threads.append(thread)
 
                         # Add delay between thread starts (except for the last one)
                         if i < len(self.selected_models) - 1:
@@ -929,41 +1086,71 @@ class ModelManagerApp:
         starter_thread = threading.Thread(target=start_threads_with_delay, daemon=True)
         starter_thread.start()
 
-        # Monitor completion
-        self.monitor_execution()
+        # ВАЖНО: Начинаем мониторинг только после добавления всех потоков
+        # Ждем немного, пока потоки будут добавлены
+        def start_monitoring():
+            time.sleep(1)  # Небольшая задержка
+            self.monitor_execution()
+
+        monitor_thread = threading.Thread(target=start_monitoring, daemon=True)
+        monitor_thread.start()
 
     def create_post_wrapper(self, ads_id, model_tag, post_text, image_path, onlyfans_tag):
         """Wrapper for create_post with error handling and status updates"""
+        driver = None
         try:
             self.add_status_message(f"🔄 Starting post creation for {onlyfans_tag} (ads_id: {ads_id})")
-            self.create_post(ads_id, model_tag, post_text, image_path, onlyfans_tag)
+            driver = self.create_post(ads_id, model_tag, post_text, image_path, onlyfans_tag)
             self.add_status_message(f"✅ Successfully created post for {onlyfans_tag}")
         except Exception as e:
             self.add_status_message(f"❌ Error creating post for {onlyfans_tag}: {str(e)}")
+        finally:
+            # Закрываем браузер в wrapper, а не в create_post
+            if driver:
+                try:
+                    self.add_status_message(f"🔒 Closing browser for {onlyfans_tag}")
+                    driver.quit()
+                    self.add_status_message(f"✅ Browser closed for {onlyfans_tag}")
+                except Exception as e:
+                    self.add_status_message(f"⚠️ Error closing browser for {onlyfans_tag}: {e}")
 
     def monitor_execution(self):
         """Monitor execution completion"""
         # Check if all threads are done
         active_threads = [t for t in self.execution_threads if t.is_alive()]
 
-        if not active_threads:
+        self.add_status_message(
+            f"🔍 Monitoring: {len(active_threads)} active threads out of {len(self.execution_threads)} total")
+
+        if not active_threads and len(self.execution_threads) > 0:  # Убеждаемся что потоки были созданы
             # All threads completed
             self.is_executing = False
             self.execute_btn.config(text="🚀 Execute for Selected Models", state='normal')
             self.add_status_message("-" * 50)
             self.add_status_message("✅ All executions completed!")
 
+            # Debug info before creating collage
+            self.add_status_message(f"🔍 Final screenshots count: {len(self.screenshots)}")
+
+            if self.screenshots:
+                self.add_status_message("📋 Final screenshots list:")
+                for i, shot in enumerate(self.screenshots):
+                    exists = os.path.exists(shot.get('path', '')) if shot.get('path') else False
+                    self.add_status_message(f"   {i + 1}. {shot.get('onlyfans_tag', 'Unknown')} - Exists: {exists}")
+
             # Create collage if we have screenshots
             if self.screenshots:
-                self.add_status_message("🖼️ Creating screenshot collage...")
+                self.add_status_message("🖼️ Starting collage creation...")
                 # Create collage in a separate thread to avoid blocking UI
                 collage_thread = threading.Thread(target=self.create_collage, daemon=True)
                 collage_thread.start()
+            else:
+                self.add_status_message("⚠️ No screenshots available for collage creation")
 
             self.update_ui()
         else:
-            # Check again in 1 second
-            self.root.after(1000, self.monitor_execution)
+            # Check again in 2 seconds
+            self.root.after(2000, self.monitor_execution)
 
     def create_post(self, ads_id, model_tag, post_text, image_path=None, onlyfans_tag=None):
         """
@@ -973,6 +1160,8 @@ class ModelManagerApp:
         - post_text: текст поста (строка)
         - image_path: путь к локальному файлу изображения
         - onlyfans_tag: тег OnlyFans для скриншота
+
+        Возвращает driver для закрытия в wrapper
         """
         from selenium.webdriver.common.by import By
         from selenium.webdriver.support.ui import WebDriverWait
@@ -982,7 +1171,7 @@ class ModelManagerApp:
         driver = launch_browser_with_adspower(ads_id)
         try:
             driver.get("https://onlyfans.com/posts/create")
-            wait = WebDriverWait(driver, 5)
+            wait = WebDriverWait(driver, 30)
 
             # 1. Ввод текста
             input_field = wait.until(EC.presence_of_element_located((
@@ -993,7 +1182,7 @@ class ModelManagerApp:
 
             # 2. Загрузка изображения
             if image_path:
-                upload_image(driver, image_path, 0)
+                upload_image(driver, image_path)
 
             # 3. Отметка модели (если надо — можно вынести в отдельную функцию)
             tag_model(driver, model_tag, wait)
@@ -1021,12 +1210,16 @@ class ModelManagerApp:
                     if screenshot_path:
                         self.add_status_message(f"📸 Error screenshot taken for {onlyfans_tag}")
                 raise e
-        finally:
-            # Close the browser
+
+            return driver  # Возвращаем driver вместо закрытия здесь
+
+        except Exception as e:
+            # При ошибке закрываем браузер сразу
             try:
                 driver.quit()
             except:
                 pass
+            raise e
 
     def add_status_message(self, message):
         """Add a message to the status log"""
