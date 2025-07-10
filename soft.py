@@ -712,6 +712,7 @@ class ModelManagerApp:
                                               args=(ads_id, model_tag, text_data, self.image_path, onlyfans_tag),
                                               daemon=True)
                     thread.start()
+                    time.sleep(2)
                     self.execution_threads.append(thread)
                 else:
                     self.add_status_message(f"❌ No ads_id found for {onlyfans_tag}")
