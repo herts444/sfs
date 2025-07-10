@@ -356,54 +356,147 @@ class ModelManagerApp:
             filename = f"screenshot_{onlyfans_tag}_{timestamp}.png"
             filepath = os.path.join(self.screenshots_dir, filename)
 
+            self.add_status_message(f"📸 Taking screenshot for {onlyfans_tag}...")
+            self.add_status_message(f"   📁 Target path: {filepath}")
+
+            # Ensure directory exists
+            os.makedirs(self.screenshots_dir, exist_ok=True)
+
             # Take screenshot
             driver.save_screenshot(filepath)
 
-            # Add to collection thread-safely
-            with self.screenshot_lock:
-                self.screenshots.append({
-                    'path': filepath,
-                    'onlyfans_tag': onlyfans_tag,
-                    'timestamp': timestamp
-                })
+            # Verify screenshot was created
+            if os.path.exists(filepath):
+                file_size = os.path.getsize(filepath)
+                self.add_status_message(f"   ✅ Screenshot saved successfully, size: {file_size} bytes")
 
-            print(f"Screenshot saved: {filepath}")
-            return filepath
+                # Add to collection thread-safely
+                with self.screenshot_lock:
+                    self.screenshots.append({
+                        'path': filepath,
+                        'onlyfans_tag': onlyfans_tag,
+                        'timestamp': timestamp
+                    })
+
+                self.add_status_message(f"   📊 Total screenshots now: {len(self.screenshots)}")
+                return filepath
+            else:
+                self.add_status_message(f"   ❌ Screenshot file was not created: {filepath}")
+                return None
 
         except Exception as e:
-            print(f"Error taking screenshot for {onlyfans_tag}: {e}")
+            self.add_status_message(f"❌ Error taking screenshot for {onlyfans_tag}: {e}")
+            print(f"Screenshot error details: {e}")
+            import traceback
+            traceback.print_exc()
             return None
+
+    def monitor_execution(self):
+        """Monitor execution completion"""
+        # Check if all threads are done
+        active_threads = [t for t in self.execution_threads if t.is_alive()]
+
+        if not active_threads:
+            # All threads completed
+            self.is_executing = False
+            self.execute_btn.config(text="🚀 Execute for Selected Models", state='normal')
+            self.add_status_message("-" * 50)
+            self.add_status_message("✅ All executions completed!")
+
+            # Debug info before creating collage
+            self.add_status_message(f"🔍 Final screenshots count: {len(self.screenshots)}")
+
+            if self.screenshots:
+                self.add_status_message("📋 Final screenshots list:")
+                for i, shot in enumerate(self.screenshots):
+                    exists = os.path.exists(shot.get('path', '')) if shot.get('path') else False
+                    self.add_status_message(f"   {i + 1}. {shot.get('onlyfans_tag', 'Unknown')} - Exists: {exists}")
+
+            # Create collage if we have screenshots
+            if self.screenshots:
+                self.add_status_message("🖼️ Starting collage creation...")
+                # Create collage in a separate thread to avoid blocking UI
+                collage_thread = threading.Thread(target=self.create_collage, daemon=True)
+                collage_thread.start()
+            else:
+                self.add_status_message("⚠️ No screenshots available for collage creation")
+
+            self.update_ui()
+        else:
+            # Check again in 1 second
+            self.root.after(1000, self.monitor_execution)
 
     def create_collage(self):
         """Create a collage from all screenshots"""
         try:
+            self.add_status_message("🔍 Starting collage creation process...")
+
+            # Детальная проверка скриншотов
+            self.add_status_message(f"📊 Screenshots count: {len(self.screenshots)}")
+
             if not self.screenshots:
-                self.add_status_message("No screenshots to create collage")
+                self.add_status_message("❌ No screenshots to create collage")
                 return
 
-            self.add_status_message(f"Creating collage from {len(self.screenshots)} screenshots...")
+            # Логируем информацию о каждом скриншоте
+            for i, screenshot_info in enumerate(self.screenshots):
+                self.add_status_message(
+                    f"📷 Screenshot {i + 1}: {screenshot_info.get('onlyfans_tag', 'Unknown')} - {screenshot_info.get('path', 'No path')}")
+
+                # Проверяем существование файла
+                if 'path' in screenshot_info and os.path.exists(screenshot_info['path']):
+                    file_size = os.path.getsize(screenshot_info['path'])
+                    self.add_status_message(f"   ✅ File exists, size: {file_size} bytes")
+                else:
+                    self.add_status_message(f"   ❌ File does not exist: {screenshot_info.get('path', 'No path')}")
+
+            self.add_status_message(f"🖼️ Creating collage from {len(self.screenshots)} screenshots...")
 
             # Load all images
             images = []
             max_width = 0
             max_height = 0
+            failed_images = 0
 
-            for screenshot_info in self.screenshots:
+            for i, screenshot_info in enumerate(self.screenshots):
                 try:
-                    img = Image.open(screenshot_info['path'])
+                    image_path = screenshot_info.get('path')
+                    if not image_path:
+                        self.add_status_message(f"⚠️ Screenshot {i + 1}: No path specified")
+                        failed_images += 1
+                        continue
+
+                    if not os.path.exists(image_path):
+                        self.add_status_message(f"⚠️ Screenshot {i + 1}: File not found: {image_path}")
+                        failed_images += 1
+                        continue
+
+                    self.add_status_message(f"📂 Loading image {i + 1}: {image_path}")
+                    img = Image.open(image_path)
+
                     images.append({
                         'image': img,
-                        'tag': screenshot_info['onlyfans_tag'],
+                        'tag': screenshot_info.get('onlyfans_tag', f'Model_{i + 1}'),
                         'width': img.width,
                         'height': img.height
                     })
                     max_width = max(max_width, img.width)
                     max_height = max(max_height, img.height)
+
+                    self.add_status_message(f"   ✅ Loaded: {img.width}x{img.height}")
+
                 except Exception as e:
-                    print(f"Error loading image {screenshot_info['path']}: {e}")
+                    self.add_status_message(
+                        f"❌ Error loading image {i + 1} ({screenshot_info.get('path', 'Unknown')}): {e}")
+                    failed_images += 1
+                    print(f"Detailed error for image {i + 1}: {e}")
+                    import traceback
+                    traceback.print_exc()
+
+            self.add_status_message(f"📈 Successfully loaded: {len(images)} images, Failed: {failed_images}")
 
             if not images:
-                self.add_status_message("No valid images found for collage")
+                self.add_status_message("❌ No valid images found for collage")
                 return
 
             # Calculate grid dimensions
@@ -411,88 +504,156 @@ class ModelManagerApp:
             grid_cols = math.ceil(math.sqrt(num_images))
             grid_rows = math.ceil(num_images / grid_cols)
 
+            self.add_status_message(f"📐 Grid layout: {grid_cols} columns x {grid_rows} rows for {num_images} images")
+
             # Resize images to uniform size (smaller for collage)
             target_width = min(400, max_width // 2)
             target_height = min(300, max_height // 2)
+
+            self.add_status_message(
+                f"🎯 Target image size: {target_width}x{target_height} (from max: {max_width}x{max_height})")
 
             # Create collage canvas
             canvas_width = grid_cols * target_width + (grid_cols + 1) * 20  # 20px margin
             canvas_height = grid_rows * (target_height + 40) + (grid_rows + 1) * 20  # 40px for text
 
+            self.add_status_message(f"🖼️ Canvas size: {canvas_width}x{canvas_height}")
+
             collage = Image.new('RGB', (canvas_width, canvas_height), 'white')
             draw = ImageDraw.Draw(collage)
 
             # Try to load a font
-            try:
-                font = ImageFont.truetype("arial.ttf", 16)
-            except:
+            font = None
+            font_attempts = [
+                "arial.ttf",
+                "Arial.ttf",
+                "calibri.ttf",
+                "Calibri.ttf",
+                "/System/Library/Fonts/Arial.ttf",  # macOS
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",  # Linux
+            ]
+
+            for font_name in font_attempts:
+                try:
+                    font = ImageFont.truetype(font_name, 16)
+                    self.add_status_message(f"✅ Font loaded: {font_name}")
+                    break
+                except:
+                    continue
+
+            if not font:
                 try:
                     font = ImageFont.load_default()
+                    self.add_status_message("✅ Using default font")
                 except:
-                    font = None
+                    self.add_status_message("⚠️ No font available")
 
             # Place images in grid
+            self.add_status_message("🔧 Placing images in grid...")
+
             for i, img_info in enumerate(images):
-                row = i // grid_cols
-                col = i % grid_cols
+                try:
+                    row = i // grid_cols
+                    col = i % grid_cols
 
-                # Resize image
-                resized_img = img_info['image'].resize((target_width, target_height), Image.Resampling.LANCZOS)
+                    self.add_status_message(f"   📍 Placing image {i + 1} ({img_info['tag']}) at position [{row},{col}]")
 
-                # Calculate position
-                x = col * target_width + (col + 1) * 20
-                y = row * (target_height + 40) + (row + 1) * 20
+                    # Resize image
+                    original_size = (img_info['image'].width, img_info['image'].height)
+                    resized_img = img_info['image'].resize((target_width, target_height), Image.Resampling.LANCZOS)
+                    self.add_status_message(f"      🔄 Resized from {original_size} to {target_width}x{target_height}")
 
-                # Paste image
-                collage.paste(resized_img, (x, y))
+                    # Calculate position
+                    x = col * target_width + (col + 1) * 20
+                    y = row * (target_height + 40) + (row + 1) * 20
 
-                # Add text label
-                text = img_info['tag']
-                if font:
-                    # Get text dimensions
-                    bbox = draw.textbbox((0, 0), text, font=font)
-                    text_width = bbox[2] - bbox[0]
-                    text_height = bbox[3] - bbox[1]
+                    # Paste image
+                    collage.paste(resized_img, (x, y))
+                    self.add_status_message(f"      ✅ Pasted at ({x}, {y})")
 
-                    # Center text under image
-                    text_x = x + (target_width - text_width) // 2
-                    text_y = y + target_height + 5
+                    # Add text label
+                    text = img_info['tag']
+                    if font:
+                        # Get text dimensions
+                        bbox = draw.textbbox((0, 0), text, font=font)
+                        text_width = bbox[2] - bbox[0]
+                        text_height = bbox[3] - bbox[1]
 
-                    draw.text((text_x, text_y), text, fill='black', font=font)
-                else:
-                    # Fallback without font
-                    text_x = x + 10
-                    text_y = y + target_height + 5
-                    draw.text((text_x, text_y), text, fill='black')
+                        # Center text under image
+                        text_x = x + (target_width - text_width) // 2
+                        text_y = y + target_height + 5
+
+                        draw.text((text_x, text_y), text, fill='black', font=font)
+                        self.add_status_message(f"      📝 Text added: '{text}' at ({text_x}, {text_y})")
+                    else:
+                        # Fallback without font
+                        text_x = x + 10
+                        text_y = y + target_height + 5
+                        draw.text((text_x, text_y), text, fill='black')
+                        self.add_status_message(f"      📝 Text added (no font): '{text}' at ({text_x}, {text_y})")
+
+                except Exception as e:
+                    self.add_status_message(f"❌ Error placing image {i + 1}: {e}")
+                    print(f"Error placing image {i + 1}: {e}")
+                    import traceback
+                    traceback.print_exc()
 
             # Save collage
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            collage_filename = f"collage_{timestamp}.png"
-            collage_path = os.path.join(self.screenshots_dir, collage_filename)
-            collage.save(collage_path, 'PNG')
-
-            self.add_status_message(f"✅ Collage created: {collage_filename}")
-            self.add_status_message(f"📁 Saved to: {collage_path}")
-
-            # Optionally open the collage
             try:
-                import subprocess
-                import platform
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                collage_filename = f"collage_{timestamp}.png"
+                collage_path = os.path.join(self.screenshots_dir, collage_filename)
 
-                if platform.system() == 'Windows':
-                    os.startfile(collage_path)
-                elif platform.system() == 'Darwin':  # macOS
-                    subprocess.run(['open', collage_path])
-                else:  # Linux
-                    subprocess.run(['xdg-open', collage_path])
+                self.add_status_message(f"💾 Saving collage to: {collage_path}")
 
-                self.add_status_message("🖼️ Collage opened in default image viewer")
+                # Ensure directory exists
+                os.makedirs(self.screenshots_dir, exist_ok=True)
+
+                collage.save(collage_path, 'PNG')
+
+                # Verify file was created
+                if os.path.exists(collage_path):
+                    file_size = os.path.getsize(collage_path)
+                    self.add_status_message(f"✅ Collage created successfully: {collage_filename}")
+                    self.add_status_message(f"📁 File size: {file_size} bytes")
+                    self.add_status_message(f"📂 Full path: {os.path.abspath(collage_path)}")
+                else:
+                    self.add_status_message(f"❌ Collage file was not created: {collage_path}")
+                    return
+
+                # Optionally open the collage
+                try:
+                    import subprocess
+                    import platform
+
+                    system = platform.system()
+                    self.add_status_message(f"🖥️ Operating system: {system}")
+
+                    if system == 'Windows':
+                        os.startfile(collage_path)
+                        self.add_status_message("🖼️ Collage opened with os.startfile() (Windows)")
+                    elif system == 'Darwin':  # macOS
+                        subprocess.run(['open', collage_path])
+                        self.add_status_message("🖼️ Collage opened with 'open' command (macOS)")
+                    else:  # Linux
+                        subprocess.run(['xdg-open', collage_path])
+                        self.add_status_message("🖼️ Collage opened with 'xdg-open' command (Linux)")
+
+                except Exception as e:
+                    self.add_status_message(f"⚠️ Could not automatically open collage: {e}")
+                    self.add_status_message(f"📁 You can manually open: {os.path.abspath(collage_path)}")
+
             except Exception as e:
-                print(f"Could not open collage: {e}")
+                self.add_status_message(f"❌ Error saving collage: {e}")
+                print(f"Collage save error: {e}")
+                import traceback
+                traceback.print_exc()
 
         except Exception as e:
-            self.add_status_message(f"❌ Error creating collage: {e}")
-            print(f"Collage creation error: {e}")
+            self.add_status_message(f"❌ Critical error in collage creation: {e}")
+            print(f"Critical collage creation error: {e}")
+            import traceback
+            traceback.print_exc()
 
     def load_models(self):
         """Load models from API in a separate thread"""
