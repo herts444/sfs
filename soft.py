@@ -700,24 +700,34 @@ class ModelManagerApp:
             self.add_status_message(f"Image: {os.path.basename(self.image_path)}")
         self.add_status_message("-" * 50)
 
-        # Execute in separate threads
+        # Execute in separate threads with staggered start
         self.execution_threads = []
-        for onlyfans_tag in self.selected_models:
-            # Find the corresponding model data to get ads_id
-            model_data = next((m for m in self.models if m['onlyfans_tag'] == onlyfans_tag), None)
-            if model_data:
-                ads_id = model_data.get('ads_id')
-                if ads_id:
-                    thread = threading.Thread(target=self.create_post_wrapper,
-                                              args=(ads_id, model_tag, text_data, self.image_path, onlyfans_tag),
-                                              daemon=True)
-                    thread.start()
-                    time.sleep(2)
-                    self.execution_threads.append(thread)
+
+        def start_threads_with_delay():
+            """Start threads with 2-second intervals"""
+            for i, onlyfans_tag in enumerate(self.selected_models):
+                # Find the corresponding model data to get ads_id
+                model_data = next((m for m in self.models if m['onlyfans_tag'] == onlyfans_tag), None)
+                if model_data:
+                    ads_id = model_data.get('ads_id')
+                    if ads_id:
+                        thread = threading.Thread(target=self.create_post_wrapper,
+                                                  args=(ads_id, model_tag, text_data, self.image_path, onlyfans_tag),
+                                                  daemon=True)
+                        thread.start()
+                        self.execution_threads.append(thread)
+
+                        # Add delay between thread starts (except for the last one)
+                        if i < len(self.selected_models) - 1:
+                            time.sleep(5)
+                    else:
+                        self.add_status_message(f"❌ No ads_id found for {onlyfans_tag}")
                 else:
-                    self.add_status_message(f"❌ No ads_id found for {onlyfans_tag}")
-            else:
-                self.add_status_message(f"❌ Model data not found for {onlyfans_tag}")
+                    self.add_status_message(f"❌ Model data not found for {onlyfans_tag}")
+
+        # Run thread starter in background to avoid GUI freezing
+        starter_thread = threading.Thread(target=start_threads_with_delay, daemon=True)
+        starter_thread.start()
 
         # Monitor completion
         self.monitor_execution()
