@@ -166,6 +166,18 @@ def run_createpost(profile_id, model_tag):
     stderr_thread.join(timeout=5)
     return post_created, post_url, was_logout
 
+def notify_posted(onlyfans_tag):
+    try:
+        url = "https://flowvelvet.com/api/v1/model/posted"
+        data = {"onlyfans_tag": onlyfans_tag}
+        headers = {"Content-Type": "application/json"}
+        resp = requests.post(url, data=json.dumps(data), headers=headers, timeout=10)
+        if resp.status_code == 200:
+            print_success("🔔 Уведомление о публикации успешно отправлено!")
+        else:
+            print_warning(f"⚠️ Не удалось отправить уведомление. Код ответа: {resp.status_code}")
+    except Exception as e:
+        print_warning(f"⚠️ Ошибка отправки уведомления: {e}")
 
 def cycle(profile_id, interval, model_tag):
     cycle_count = 0
@@ -191,6 +203,7 @@ def cycle(profile_id, interval, model_tag):
                     with open("successful_posts.txt", 'a', encoding='utf-8') as f:
                         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         f.write(f"{timestamp} | #{cycle_count} | {post_url} | {profile_id}\n")
+                    notify_posted(model_tag)
             else:
                 print_warning(f"⚠️ Публикация #{cycle_count} возможно создана с ошибками. Операция заняла {elapsed_time:.2f} секунд.")
             wait_message = format_time_duration(wait_time)
@@ -240,8 +253,11 @@ def main():
             else:
                 model_tag = arg
         else:
-            model_tag = os.getenv("ONLYFANS_TAG", "@u496502224")
+            print_error("❌ Не передан OnlyFans тег! Используй: python main.py @onlyfans_tag")
+            sys.exit(1)
+
         print_info(f"🏷️ Используется OnlyFans тег: {model_tag}")
+
         # --------------------------------------------------
         models_data = get_models_data(model_tag)
         if not models_data or "models" not in models_data:
